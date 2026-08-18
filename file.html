@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FunctionWar — Đấu súng bằng hàm số</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141a2e; --line:#26304d; --ink:#e8ecf8; --muted:#93a0c0;
+    --blue:#4ea8ff; --red:#ff6b6b; --gold:#ffd166; --green:#5ddc9b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(1200px 700px at 20% -10%,#182games,#0b1020 60%),var(--bg);
+    color:var(--ink); font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:18px}
+  header h1{margin:0;font-size:22px;letter-spacing:.3px}
+  header p{margin:4px 0 14px;color:var(--muted);font-size:13px}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+  @media (max-width:1000px){main{grid-template-columns:1fr}}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;position:relative}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#080c18;cursor:crosshair}
+  #readout{position:absolute;right:18px;bottom:16px;font:12px ui-monospace,monospace;color:var(--muted);
+    background:#0a0f1eaa;padding:4px 8px;border-radius:6px;pointer-events:none}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .turn{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:10px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.6px}
+  .fx-row{display:flex;gap:8px;align-items:center}
+  .fx-row span{font:italic 16px serif;color:var(--gold)}
+  input[type=text],select{
+    width:100%;background:#0a0f1e;border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:9px 10px;font:14px ui-monospace,monospace
+  }
+  button{
+    background:linear-gradient(#2f6fd0,#24589f);color:#fff;border:0;border-radius:8px;
+    padding:10px 14px;font-weight:600;cursor:pointer
+  }
+  button:hover{filter:brightness(1.12)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:#1d2540;border:1px solid var(--line)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chips button{padding:4px 9px;font:12px ui-monospace,monospace;background:#1d2540;border:1px solid var(--line)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .status{min-height:20px;font-size:13px;margin-top:8px}
+  .status.err{color:var(--red)} .status.ok{color:var(--green)}
+  table.tg{width:100%;border-collapse:collapse;font:12px ui-monospace,monospace;margin-top:6px}
+  table.tg td{padding:3px 4px;border-bottom:1px solid #1d2540;color:var(--muted)}
+  table.tg td:first-child{color:var(--ink)}
+  #log{height:150px;overflow:auto;background:#0a0f1e;border:1px solid var(--line);border-radius:8px;
+    padding:8px;font:12px ui-monospace,monospace;color:var(--muted)}
+  #log b{color:var(--ink);font-weight:600}
+  details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  summary{cursor:pointer;font-size:13px;color:var(--muted)}
+  details code{color:var(--gold)}
+  hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FunctionWar</h1>
+    <p>Viết hàm số để bắn. Gốc toạ độ của hàm nằm ngay tại người lính đang bắn, trục x hướng về phía đối phương.</p>
+  </header>
+
+  <main>
+    <section class="stage">
+      <canvas id="cv" width="1000" height="520"></canvas>
+      <div id="readout">—</div>
+    </section>
+
+    <aside class="panel">
+      <div class="turn"><span class="dot" id="turnDot"></span><span id="turnText">Lượt của bạn</span></div>
+
+      <label>Hàm bắn</label>
+      <div class="fx-row"><span>f(x) =</span><input id="fx" type="text" value="0.02*x^2" autocomplete="off" spellcheck="false"></div>
+      <div class="chips">
+        <button data-ins="sin(">sin</button><button data-ins="cos(">cos</button>
+        <button data-ins="tan(">tan</button><button data-ins="sqrt(">√</button>
+        <button data-ins="abs(">abs</button><button data-ins="ln(">ln</button>
+        <button data-ins="exp(">exp</button><button data-ins="tanh(">tanh</button>
+        <button data-ins="^">^</button><button data-ins="pi">π</button>
+      </div>
+
+      <div class="grid2" style="margin-top:10px">
+        <button id="fire">Bắn (Enter)</button>
+        <button id="prev" class="ghost">Xem thử: TẮT</button>
+      </div>
+      <div class="status" id="status"></div>
+
+      <label>Mục tiêu (toạ độ tương đối)</label>
+      <table class="tg" id="targets"></table>
+
+      <hr>
+      <label>Thiết lập trận</label>
+      <div class="grid2">
+        <select id="level">
+          <option value="easy">Bot: Dễ</option>
+          <option value="normal" selected>Bot: Thường</option>
+          <option value="hard">Bot: Khó</option>
+        </select>
+        <select id="size">
+          <option value="2">2 lính / bên</option>
+          <option value="3" selected>3 lính / bên</option>
+          <option value="4">4 lính / bên</option>
+        </select>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <select id="obs">
+          <option value="4">Ít chướng ngại</option>
+          <option value="7" selected>Vừa</option>
+          <option value="11">Nhiều</option>
+        </select>
+        <button id="newgame" class="ghost">Trận mới</button>
+      </div>
+
+      <label style="margin-top:12px">Diễn biến</label>
+      <div id="log"></div>
+
+      <details>
+        <summary>Cú pháp &amp; luật chơi</summary>
+        <p style="font-size:13px;color:var(--muted)">
+          Toán tử: <code>+ - * / ^ %</code>, ngoặc, nhân ẩn (<code>2x</code>, <code>3sin(x)</code>).<br>
+          Hàm: <code>sin cos tan asin acos atan sinh cosh tanh ln log log2 sqrt cbrt abs exp floor ceil round sign min max mod pow hypot</code>.
+          Hằng: <code>pi e tau</code>.<br><br>
+          Đạn đi theo đồ thị từ x=0 tới hết tầm. Đạn dừng khi trúng lính (bất kể bên nào), trúng đá, hoặc bay ra ngoài khung. Bắn trúng là hạ ngay. Bấm vào lính xanh của bạn để chọn người bắn.
+        </p>
+      </details>
+    </aside>
+  </main>
+</div>
+
+<script>
+/* ============ 1. BỘ PHÂN TÍCH BIỂU THỨC TOÁN ============ */
+const FUNCS = {
+  sin:Math.sin, cos:Math.cos, tan:Math.tan,
+  asin:Math.asin, acos:Math.acos, atan:Math.atan,
+  sinh:Math.sinh, cosh:Math.cosh, tanh:Math.tanh,
+  ln:Math.log, log:v=>Math.log10(v), log10:v=>Math.log10(v), log2:v=>Math.log2(v),
+  sqrt:Math.sqrt, cbrt:Math.cbrt, abs:Math.abs, exp:Math.exp,
+  floor:Math.floor, ceil:Math.ceil, round:Math.round, sign:Math.sign,
+  min:Math.min, max:Math.max, pow:Math.pow, hypot:Math.hypot,
+  mod:(a,b)=>a%b, atan2:Math.atan2
+};
+const CONSTS = { pi:Math.PI, e:Math.E, tau:2*Math.PI };
+
+function tokenize(src){
+  const s = src.replace(/\s+/g,'');
+  if(!s) throw new Error('Chưa nhập hàm nào.');
+  const t=[]; let i=0;
+  while(i<s.length){
+    const c=s[i];
+    if(/[0-9.]/.test(c)){
+      let j=i; while(j<s.length && /[0-9.]/.test(s[j])) j++;
+      const v=parseFloat(s.slice(i,j));
+      if(!Number.isFinite(v)) throw new Error('Số không hợp lệ: '+s.slice(i,j));
+      t.push({t:'num',v}); i=j; continue;
+    }
+    if(/[a-zA-Z]/.test(c)){
+      let j=i; while(j<s.length && /[a-zA-Z0-9_]/.test(s[j])) j++;
+      t.push({t:'id',v:s.slice(i,j).toLowerCase()}); i=j; continue;
+    }
+    if('+-*/^%(),'.includes(c)){ t.push({t:c}); i++; continue; }
+    throw new Error('Ký tự không hợp lệ: '+c);
+  }
+  // chèn dấu nhân ẩn: 2x, 3(x+1), (x)(x), 2sin(x)
+  const out=[];
+  for(let k=0;k<t.length;k++){
+    out.push(t[k]);
+    const a=t[k], b=t[k+1]; if(!b) break;
+    const aEnd = a.t==='num' || a.t===')' || (a.t==='id' && !FUNCS[a.v]);
+    const bStart = b.t==='num' || b.t==='(' || b.t==='id';
+    if(aEnd && bStart) out.push({t:'*'});
+  }
+  return out;
+}
+
+function compile(src){
+  const tk = tokenize(src); let p = 0;
+  const eat = ty => (tk[p] && tk[p].t===ty) ? (p++, true) : false;
+
+  function expr(){
+    let n = term();
+    for(;;){
+      if(eat('+')){ const l=n, r=term(); n=x=>l(x)+r(x); }
+      else if(eat('-')){ const l=n, r=term(); n=x=>l(x)-r(x); }
+      else return n;
+    }
+  }
+  function term(){
+    let n = unary();
+    for(;;){
+      if(eat('*')){ const l=n, r=unary(); n=x=>l(x)*r(x); }
+      else if(eat('/')){ const l=n, r=unary(); n=x=>l(x)/r(x); }
+      else if(eat('%')){ const l=n, r=unary(); n=x=>l(x)%r(x); }
+      else return n;
+    }
+  }
+  function unary(){
+    if(eat('-')){ const r=unary(); return x=>-r(x); }
+    if(eat('+')) return unary();
+    return power();
+  }
+  function power(){
+    const b = atom();
+    if(eat('^')){ const e=unary(); return x=>Math.pow(b(x),e(x)); }
+    return b;
+  }
+  function atom(){
+    const t=tk[p];
+    if(!t) throw new Error('Biểu thức bị thiếu ở cuối.');
+    if(t.t==='num'){ p++; const v=t.v; return ()=>v; }
+    if(t.t==='('){ p++; const e=expr(); if(!eat(')')) throw new Error('Thiếu dấu ")".'); return e; }
+    if(t.t==='id'){
+      p++; const name=t.v;
+      if(FUNCS[name]){
+        if(!eat('(')) throw new Error(`Hàm "${name}" cần dấu ngoặc.`);
+        const args=[expr()];
+        while(eat(',')) args.push(expr());
+        if(!eat(')')) throw new Error('Thiếu dấu ")".');
+        const f=FUNCS[name];
+        return x=>f(...args.map(a=>a(x)));
+      }
+      if(name in CONSTS){ const v=CONSTS[name]; return ()=>v; }
+      if(name==='x') return x=>x;
+      throw new Error('Không hiểu ký hiệu "'+name+'".');
+    }
+    throw new Error('Cú pháp sai gần vị trí '+(p+1)+'.');
+  }
+  const f=expr();
+  if(p<tk.length) throw new Error('Phần dư không hợp lệ ở cuối biểu thức.');
+  if(typeof f(0.37)!=='number') throw new Error('Hàm không trả về số.');
+  return f;
+}
+
+/* ============ 2. THẾ GIỚI GAME ============ */
+const W = { xmin:-25, xmax:25, ymin:-13, ymax:13 };
+const SR = 0.52;                 // bán kính người lính
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const PX = cv.width/(W.xmax-W.xmin);
+
+const sx = x => (x-W.xmin)*PX;
+const sy = y => (W.ymax-y)*PX;
+
+const state = {
+  soldiers:[], obstacles:[], turn:0, phase:'aim',
+  active:[null,null], lastIdx:[-1,-1],
+  trails:[], anim:null, fx:[], preview:null, winner:null
+};
+
+const rnd = (a,b)=>a+Math.random()*(b-a);
+
+function newGame(){
+  const n = +document.getElementById('size').value;
+  const nObs = +document.getElementById('obs').value;
+  state.soldiers=[]; state.obstacles=[]; state.trails=[]; state.fx=[];
+  state.anim=null; state.preview=null; state.winner=null; state.lastIdx=[-1,-1];
+
+  const place = (team)=>{
+    const xr = team===0 ? [-23,-11] : [11,23];
+    for(let i=0;i<n;i++){
+      let s,tries=0;
+      do{
+        s={x:rnd(xr[0],xr[1]), y:rnd(W.ymin+1.5,W.ymax-1.5), team, alive:true, id:state.soldiers.length};
+        tries++;
+      } while(tries<400 && state.soldiers.some(o=>Math.hypot(o.x-s.x,o.y-s.y)<3.2));
+      state.soldiers.push(s);
+    }
+  };
+  place(0); place(1);
+
+  for(let i=0;i<nObs;i++){
+    let o,tries=0;
+    do{
+      o={x:rnd(-13,13), y:rnd(W.ymin+1.5,W.ymax-1.5), r:rnd(1.1,2.7)};
+      tries++;
+    } while(tries<500 && (
+      state.obstacles.some(q=>Math.hypot(q.x-o.x,q.y-o.y) < q.r+o.r+0.8) ||
+      state.soldiers.some(s=>Math.hypot(s.x-o.x,s.y-o.y) < o.r+2.2)
+    ));
+    if(tries<500) state.obstacles.push(o);
+  }
+
+  addLog('<b>Trận mới bắt đầu.</b> Bạn là đội xanh (bên trái).');
+  startTurn(0);
+}
+
+/* ---- va chạm đoạn thẳng / hình tròn ---- */
+function segCircle(ax,ay,bx,by,cx,cy,r){
+  const dx=bx-ax, dy=by-ay, fx=ax-cx, fy=ay-cy;
+  const A=dx*dx+dy*dy;
+  if(A===0) return (fx*fx+fy*fy<=r*r)?0:-1;
+  const B=2*(fx*dx+fy*dy), C=fx*fx+fy*fy-r*r;
+  const d=B*B-4*A*C;
+  if(d<0) return -1;
+  const q=Math.sqrt(d), t1=(-B-q)/(2*A), t2=(-B+q)/(2*A);
+  if(t1>=0&&t1<=1) return t1;
+  if(t2>=0&&t2<=1) return t2;
+  if(t1<0&&t2>1) return 0;
+  return -1;
+}
+
+/* ---- mô phỏng đường đạn ---- */
+function simulate(shooter, fn, opts={}){
+  const step = opts.step ?? 0.025, maxU = opts.maxU ?? 64;
+  const dir = shooter.team===0 ? 1 : -1;
+  const pts=[]; let hit=null, prev=null;
+
+  for(let u=0; u<=maxU; u+=step){
+    let y; try{ y=fn(u); }catch(e){ y=NaN; }
+    if(!Number.isFinite(y) || Math.abs(y)>1e6){ pts.push(null); prev=null; continue; }
+    const px = shooter.x + dir*u, py = shooter.y + y;
+
+    if(prev){
+      let bt=2, bh=null;
+      for(const o of state.obstacles){
+        const t=segCircle(prev.x,prev.y,px,py,o.x,o.y,o.r);
+        if(t>=0&&t<bt){ bt=t; bh={type:'obstacle'}; }
+      }
+      for(const s of state.soldiers){
+        if(!s.alive) continue;
+        if(s===shooter && u<1.3) continue;
+        const t=segCircle(prev.x,prev.y,px,py,s.x,s.y,SR);
+        if(t>=0&&t<bt){ bt=t; bh={type:'soldier',soldier:s}; }
+      }
+      if(bh){
+        const hx=prev.x+(px-prev.x)*bt, hy=prev.y+(py-prev.y)*bt;
+        pts.push({x:hx,y:hy}); hit={...bh,x:hx,y:hy}; break;
+      }
+    }
+    if(px<W.xmin-0.2||px>W.xmax+0.2||py<W.ymin-0.2||py>W.ymax+0.2){
+      pts.push({x:px,y:py}); hit={type:'out',x:px,y:py}; break;
+    }
+    pts.push({x:px,y:py}); prev={x:px,y:py};
+  }
+  return {pts,hit};
+}
+
+/* ============ 3. LƯỢT CHƠI ============ */
+function chooseShooter(team){
+  const list = state.soldiers.filter(s=>s.team===team);
+  const n=list.length, start=state.lastIdx[team];
+  for(let k=1;k<=n;k++){
+    const j=(start+k+n)%n;
+    if(list[j].alive){ state.lastIdx[team]=j; return list[j]; }
+  }
+  return null;
+}
+
+function startTurn(team){
+  const alive0=state.soldiers.some(s=>s.team===0&&s.alive);
+  const alive1=state.soldiers.some(s=>s.team===1&&s.alive);
+  if(!alive0||!alive1){ endGame(alive0?0:1); return; }
+
+  state.turn=team; state.phase='aim'; state.preview=null;
+  state.active[team]=chooseShooter(team);
+  updateUI();
+  if(team===1) setTimeout(botAct, 700);
+}
+
+function fireShot(shooter, fn, exprText){
+  const res = simulate(shooter, fn, {step:0.022});
+  state.phase='anim';
+  state.anim = { pts:res.pts, hit:res.hit, i:0, team:shooter.team,
+                 speed: Math.max(5, res.pts.length/95) };
+  addLog(`<b>${shooter.team===0?'Bạn':'Bot'} #${shooter.id+1}</b> bắn f(x) = ${exprText}`);
+  updateUI();
+}
+
+function resolveShot(){
+  const a=state.anim; state.anim=null;
+  state.trails.push({pts:a.pts, team:a.team});
+  if(state.trails.length>7) state.trails.shift();
+
+  const h=a.hit;
+  if(h && h.type==='soldier'){
+    h.soldier.alive=false;
+    state.fx.push({x:h.x,y:h.y,age:0});
+    const who = h.soldier.team===0 ? 'lính xanh' : 'lính đỏ';
+    const friendly = h.soldier.team===a.team;
+    addLog(`→ Hạ ${who} #${h.soldier.id+1}${friendly?' <i>(bắn nhầm đồng đội!)</i>':''}`);
+  } else if(h && h.type==='obstacle'){
+    state.fx.push({x:h.x,y:h.y,age:0});
+    addLog('→ Đạn nổ vào đá.');
+  } else {
+    addLog('→ Trượt, đạn bay khỏi khu vực.');
+  }
+
+  const alive0=state.soldiers.some(s=>s.team===0&&s.alive);
+  const alive1=state.soldiers.some(s=>s.team===1&&s.alive);
+  if(!alive0||!alive1){ endGame(alive0?0:1); return; }
+  startTurn(1-state.turn);
+}
+
+function endGame(winner){
+  state.phase='over'; state.winner=winner;
+  addLog(`<b>${winner===0?'BẠN THẮNG!':'BOT THẮNG.'}</b> Bấm "Trận mới" để chơi lại.`);
+  updateUI();
+}
+
+/* ============ 4. BOT ============ */
+const nf = v => String(Math.round(v*1000)/1000);
+const buildExpr = terms => terms.filter(Boolean).join(' + ').replace(/\+ -/g,'- ') || '0';
+
+function botCandidates(shooter){
+  const dir = shooter.team===0?1:-1;
+  const enemies = state.soldiers.filter(s=>s.alive && s.team!==shooter.team);
+  const out=[];
+  for(const tg of enemies){
+    const ut = dir*(tg.x-shooter.x), dy = tg.y-shooter.y;
+    if(ut<2) continue;
+    const m = dy/ut;
+
+    out.push({expr:`${nf(m)}*x`, fn:u=>m*u});
+
+    for(const a of [0.002,0.005,0.01,0.02,0.04,-0.002,-0.005,-0.01,-0.02,-0.04]){
+      const b=(dy-a*ut*ut)/ut;
+      out.push({expr:buildExpr([`${nf(a)}*x^2`,`${nf(b)}*x`]), fn:u=>a*u*u+b*u});
+    }
+    for(const a of [0.0002,0.0005,0.001,-0.0002,-0.0005,-0.001]){
+      const b=(dy-a*ut**3)/ut;
+      out.push({expr:buildExpr([`${nf(a)}*x^3`,`${nf(b)}*x`]), fn:u=>a*u*u*u+b*u});
+    }
+    for(const n of [1,2,3]){
+      const k=2*Math.PI*n/ut;
+      for(const A of [1.5,3,5,-1.5,-3,-5]){
+        out.push({
+          expr:buildExpr([`${nf(m)}*x`,`${nf(A)}*sin(${nf(k)}*x)`]),
+          fn:u=>m*u+A*Math.sin(k*u)
+        });
+      }
+    }
+    for(const c of [0.05,0.12,0.25,0.5]){
+      const d=dy/Math.tanh(c*ut);
+      if(Number.isFinite(d)) out.push({expr:`${nf(d)}*tanh(${nf(c)}*x)`, fn:u=>d*Math.tanh(c*u)});
+    }
+  }
+  return out;
+}
+
+function scoreOf(shooter, fn){
+  const r = simulate(shooter, fn, {step:0.07});
+  if(r.hit && r.hit.type==='soldier')
+    return r.hit.soldier.team===shooter.team ? -600 : 1000;
+  let best=1e9;
+  for(const p of r.pts){
+    if(!p) continue;
+    for(const s of state.soldiers){
+      if(!s.alive || s.team===shooter.team) continue;
+      const d=Math.hypot(p.x-s.x,p.y-s.y);
+      if(d<best) best=d;
+    }
+  }
+  return 200 - Math.min(best,100)*8;
+}
+
+function botAct(){
+  if(state.phase!=='aim' || state.turn!==1) return;
+  const shooter = state.active[1];
+  const level = document.getElementById('level').value;
+  let cands = botCandidates(shooter);
+
+  if(!cands.length){ fireShot(shooter, u=>0.05*u, '0.05*x'); return; }
+  if(level==='easy') cands = cands.filter((_,i)=>i%3===0);
+
+  const scored = cands.map(c=>({...c, s:scoreOf(shooter,c.fn)})).sort((a,b)=>b.s-a.s);
+  const pool = level==='easy' ? 6 : level==='normal' ? 2 : 1;
+  const pick = scored[Math.floor(Math.random()*Math.min(pool,scored.length))];
+
+  const eps = level==='easy' ? (Math.random()-0.5)*0.13
+            : level==='normal' ? (Math.random()-0.5)*0.03 : 0;
+  const fn = eps ? (u=>pick.fn(u)+eps*u) : pick.fn;
+  const expr = eps ? buildExpr([pick.expr,`${nf(eps)}*x`]) : pick.expr;
+  fireShot(shooter, fn, expr);
+}
+
+/* ============ 5. VẼ ============ */
+function drawGrid(){
+  ctx.lineWidth=1;
+  ctx.strokeStyle='#131c33';
+  for(let x=W.xmin;x<=W.xmax;x++){ ctx.beginPath();ctx.moveTo(sx(x),0);ctx.lineTo(sx(x),cv.height);ctx.stroke(); }
+  for(let y=Math.ceil(W.ymin);y<=W.ymax;y++){ ctx.beginPath();ctx.moveTo(0,sy(y));ctx.lineTo(cv.width,sy(y));ctx.stroke(); }
+  ctx.strokeStyle='#1e2b4d';
+  for(let x=W.xmin;x<=W.xmax;x+=5){ ctx.beginPath();ctx.moveTo(sx(x),0);ctx.lineTo(sx(x),cv.height);ctx.stroke(); }
+  for(let y=-10;y<=10;y+=5){ ctx.beginPath();ctx.moveTo(0,sy(y));ctx.lineTo(cv.width,sy(y));ctx.stroke(); }
+  ctx.strokeStyle='#39507f'; ctx.beginPath();
+  ctx.moveTo(0,sy(0)); ctx.lineTo(cv.width,sy(0));
+  ctx.moveTo(sx(0),0); ctx.lineTo(sx(0),cv.height); ctx.stroke();
+  ctx.fillStyle='#5a6b93'; ctx.font='11px ui-monospace,monospace'; ctx.textAlign='center';
+  for(let x=W.xmin+5;x<W.xmax;x+=5) if(x) ctx.fillText(x, sx(x), sy(0)+14);
+}
+
+function drawObstacles(){
+  for(const o of state.obstacles){
+    const g=ctx.createRadialGradient(sx(o.x)-o.r*PX*.3, sy(o.y)-o.r*PX*.3, 2, sx(o.x), sy(o.y), o.r*PX);
+    g.addColorStop(0,'#4a5573'); g.addColorStop(1,'#242c44');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(sx(o.x),sy(o.y),o.r*PX,0,7); ctx.fill();
+    ctx.strokeStyle='#5d6a8c'; ctx.lineWidth=1.5; ctx.stroke();
+  }
+}
+
+function drawSoldiers(){
+  for(const s of state.soldiers){
+    const X=sx(s.x), Y=sy(s.y), R=SR*PX;
+    if(!s.alive){
+      ctx.strokeStyle='#3b4considera'; ctx.strokeStyle='#3b4360'; ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(X-R,Y-R); ctx.lineTo(X+R,Y+R);
+      ctx.moveTo(X+R,Y-R); ctx.lineTo(X-R,Y+R); ctx.stroke();
+      continue;
+    }
+    const col = s.team===0 ? '#4ea8ff' : '#ff6b6b';
+    if(state.active[state.turn]===s && state.phase!=='over'){
+      ctx.strokeStyle='#ffd166'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(X,Y,R+6+Math.sin(Date.now()/220)*1.6,0,7); ctx.stroke();
+    }
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(X,Y,R,0,7); ctx.fill();
+    ctx.fillStyle='#0b1020'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(s.id+1, X, Y+.5);
+    const d = s.team===0 ? 1 : -1;
+    ctx.strokeStyle=col; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(X+d*R,Y); ctx.lineTo(X+d*(R+9),Y); ctx.stroke();
+  }
+}
+
+function strokePts(pts, color, width, alpha, upto){
+  ctx.strokeStyle=color; ctx.lineWidth=width; ctx.globalAlpha=alpha;
+  ctx.beginPath();
+  let pen=false;
+  const n = upto===undefined ? pts.length : Math.min(upto,pts.length);
+  for(let i=0;i<n;i++){
+    const p=pts[i];
+    if(!p){ pen=false; continue; }
+    if(!pen){ ctx.moveTo(sx(p.x),sy(p.y)); pen=true; }
+    else ctx.lineTo(sx(p.x),sy(p.y));
+  }
+  ctx.stroke(); ctx.globalAlpha=1;
+}
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  drawGrid();
+
+  state.trails.forEach((t,i)=>{
+    const a = 0.10 + 0.05*i;
+    strokePts(t.pts, t.team===0?'#4ea8ff':'#ff6b6b', 1.5, a);
+  });
+
+  if(state.preview && state.phase==='aim' && state.turn===0){
+    ctx.setLineDash([6,6]);
+    strokePts(state.preview.pts,'#ffd166',1.5,0.55);
+    ctx.setLineDash([]);
+  }
+
+  drawObstacles();
+
+  if(state.anim){
+    const a=state.anim;
+    strokePts(a.pts, a.team===0?'#8fd0ff':'#ffa0a0', 2.6, 1, Math.floor(a.i));
+    const head=a.pts[Math.min(Math.floor(a.i),a.pts.length-1)];
+    if(head){
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(sx(head.x),sy(head.y),4,0,7); ctx.fill();
+      ctx.fillStyle='#ffd16688'; ctx.beginPath(); ctx.arc(sx(head.x),sy(head.y),9,0,7); ctx.fill();
+    }
+    a.i += a.speed;
+    if(a.i >= a.pts.length) resolveShot();
+  }
+
+  drawSoldiers();
+
+  state.fx = state.fx.filter(f=>f.age<26);
+  for(const f of state.fx){
+    f.age++;
+    const r=(6+f.age*2.4);
+    ctx.globalAlpha=Math.max(0,1-f.age/26);
+    ctx.strokeStyle='#ffd166'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(sx(f.x),sy(f.y),r,0,7); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  if(state.phase==='over'){
+    ctx.fillStyle='#050813bb'; ctx.fillRect(0,cv.height/2-52,cv.width,104);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = state.winner===0 ? '#5ddc9b' : '#ff6b6b';
+    ctx.font='bold 34px sans-serif';
+    ctx.fillText(state.winner===0?'BẠN THẮNG!':'BOT THẮNG', cv.width/2, cv.height/2);
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ============ 6. GIAO DIỆN ============ */
+const $ = id => document.getElementById(id);
+let previewOn=false;
+
+function addLog(html){
+  const el=$('log');
+  el.insertAdjacentHTML('beforeend', `<div>${html}</div>`);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateUI(){
+  const yourTurn = state.turn===0 && state.phase==='aim';
+  $('turnDot').style.background = state.turn===0 ? 'var(--blue)':'var(--red)';
+  $('turnText').textContent =
+    state.phase==='over' ? 'Trận đã kết thúc'
+    : state.phase==='anim' ? 'Đạn đang bay…'
+    : state.turn===0 ? `Lượt của bạn — lính #${state.active[0].id+1}`
+    : `Bot đang tính toán — lính #${state.active[1].id+1}`;
+  $('fire').disabled = !yourTurn;
+  $('fx').disabled = !yourTurn;
+
+  const me=state.active[0];
+  const rows = state.soldiers.filter(s=>s.team===1).map(s=>{
+    if(!s.alive) return `<tr><td>Đỏ #${s.id+1}</td><td colspan="2">đã hạ</td></tr>`;
+    const dx = me ? (s.x-me.x) : 0, dy = me ? (s.y-me.y) : 0;
+    return `<tr><td>Đỏ #${s.id+1}</td><td>Δx ${dx.toFixed(1)}</td><td>Δy ${dy.toFixed(1)}</td></tr>`;
+  }).join('');
+  $('targets').innerHTML = rows;
+}
+
+function computePreview(){
+  if(!previewOn || state.turn!==0 || state.phase!=='aim'){ state.preview=null; return; }
+  try{
+    const fn=compile($('fx').value);
+    state.preview = simulate(state.active[0], fn, {step:0.05});
+    $('status').className='status'; $('status').textContent='';
+  }catch(e){ state.preview=null; }
+}
+
+$('fire').addEventListener('click', ()=>{
+  if(state.turn!==0 || state.phase!=='aim') return;
+  const src=$('fx').value;
+  try{
+    const fn=compile(src);
+    $('status').className='status'; $('status').textContent='';
+    state.preview=null;
+    fireShot(state.active[0], fn, src);
+  }catch(e){
+    $('status').className='status err'; $('status').textContent=e.message;
+  }
+});
+
+$('fx').addEventListener('keydown', e=>{ if(e.key==='Enter') $('fire').click(); });
+$('fx').addEventListener('input', computePreview);
+
+$('prev').addEventListener('click', ()=>{
+  previewOn=!previewOn;
+  $('prev').textContent = 'Xem thử: '+(previewOn?'BẬT':'TẮT');
+  computePreview();
+});
+
+document.querySelectorAll('[data-ins]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const inp=$('fx'), t=b.dataset.ins;
+    const s=inp.selectionStart ?? inp.value.length;
+    inp.value = inp.value.slice(0,s)+t+inp.value.slice(inp.selectionEnd ?? s);
+    inp.focus(); inp.selectionStart=inp.selectionEnd=s+t.length;
+    computePreview();
+  });
+});
+
+$('newgame').addEventListener('click', ()=>{ $('log').innerHTML=''; newGame(); });
+
+cv.addEventListener('mousemove', e=>{
+  const r=cv.getBoundingClientRect();
+  const wx = W.xmin + (e.clientX-r.left)/r.width*(W.xmax-W.xmin);
+  const wy = W.ymax - (e.clientY-r.top)/r.height*(W.ymax-W.ymin);
+  const me=state.active[0];
+  const rel = me ? ` | so với lính: x=${(wx-me.x).toFixed(1)} y=${(wy-me.y).toFixed(1)}` : '';
+  $('readout').textContent = `(${wx.toFixed(1)}, ${wy.toFixed(1)})${rel}`;
+});
+
+cv.addEventListener('click', e=>{
+  if(state.turn!==0 || state.phase!=='aim') return;
+  const r=cv.getBoundingClientRect();
+  const wx = W.xmin + (e.clientX-r.left)/r.width*(W.xmax-W.xmin);
+  const wy = W.ymax - (e.clientY-r.top)/r.height*(W.ymax-W.ymin);
+  const list=state.soldiers.filter(s=>s.team===0);
+  list.forEach((s,i)=>{
+    if(s.alive && Math.hypot(s.x-wx,s.y-wy) < SR+0.7){
+      state.active[0]=s; state.lastIdx[0]=i; computePreview(); updateUI();
+    }
+  });
+});
+
+newGame();
+draw();
+</script>
+</body>
+</html>
